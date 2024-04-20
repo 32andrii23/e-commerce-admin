@@ -42,7 +42,8 @@ export const CellAction = ({
             router.refresh();
             toast.success("Product deleted"); 
         } catch (err) {
-            toast.error("Something went wrong.");
+            toast.error("Something went wrong");
+            console.log(err);
         } finally {
             setLoading(false);
             setOpen(false);
