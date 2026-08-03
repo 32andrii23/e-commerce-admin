@@ -1,19 +1,16 @@
 import prismadb from "@/lib/prismadb";
 
-import { auth } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { InputValidationError, parseBody, storeInputSchema } from "@/lib/api-security";
 
-export async function PATCH (
-    req: Request,
-    { params }: { params: { storeId: string } }
-) {
+export async function PATCH(req: Request, props: { params: Promise<{ storeId: string }> }) {
+    const params = await props.params;
     try {
-        const { userId } = auth();
+        const { userId } = await auth();
         if (!userId) return new NextResponse("Unauthorized", { status: 401 });
 
-        const body = await req.json();
-        const { name } = body;
-        if (!name) return new NextResponse("Name is required", { status: 400 });
+        const { name } = parseBody(storeInputSchema, await req.json());
 
         if(!params.storeId) return new NextResponse("Store id is required", { status: 400 });
 
@@ -26,21 +23,20 @@ export async function PATCH (
                 name: name
             }
         });
-        if(!store) return new NextResponse("Store not found", { status: 404 });
+        if (store.count === 0) return new NextResponse("Store not found", { status: 404 });
         
         return NextResponse.json(store);
     } catch (error) {
+        if (error instanceof InputValidationError || error instanceof SyntaxError) return new NextResponse(error.message, { status: 400 });
         console.log("[STORE_PATCH]", error)
         return new NextResponse("Internal error", { status: 500 });
     }
 }
 
-export async function DELETE (
-    req: Request,
-    { params }: { params: { storeId: string } }
-) {
+export async function DELETE(req: Request, props: { params: Promise<{ storeId: string }> }) {
+    const params = await props.params;
     try {
-        const { userId } = auth();
+        const { userId } = await auth();
         if (!userId) return new NextResponse("Unauthenticated", { status: 401 });
         
         if(!params.storeId) return new NextResponse("Store id is required", { status: 400 });
@@ -51,7 +47,7 @@ export async function DELETE (
                 userId
             }
         });
-        if(!store) return new NextResponse("Store not found", { status: 404 });
+        if (store.count === 0) return new NextResponse("Store not found", { status: 404 });
         
         return NextResponse.json(store);
     } catch (error) {

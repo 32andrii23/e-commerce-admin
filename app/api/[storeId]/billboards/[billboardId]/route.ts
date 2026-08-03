@@ -1,18 +1,21 @@
 import prismadb from "@/lib/prismadb";
 
-import { auth } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { billboardInputSchema, InputValidationError, parseBody } from "@/lib/api-security";
 
-export async function GET (
+export async function GET(
     req: Request,
-    { params }: { params: { billboardId: string } }
+    props: { params: Promise<{ billboardId: string, storeId: string }> }
 ) {
+    const params = await props.params;
     try {
         if(!params.billboardId) return new NextResponse("Billboard id is required", { status: 400 });
         
-        const billboard = await prismadb.billboard.findUnique({
+        const billboard = await prismadb.billboard.findFirst({
             where: {
-                id: params.billboardId
+                id: params.billboardId,
+                storeId: params.storeId
             }
         });
         if(!billboard) return new NextResponse("Billboard not found", { status: 404 });
@@ -24,18 +27,16 @@ export async function GET (
     }
 }
 
-export async function PATCH (
+export async function PATCH(
     req: Request,
-    { params }: { params: { billboardId: string, storeId: string } }
+    props: { params: Promise<{ billboardId: string, storeId: string }> }
 ) {
+    const params = await props.params;
     try {
-        const { userId } = auth();
+        const { userId } = await auth();
         if (!userId) return new NextResponse("Unauthenticated", { status: 401 });
 
-        const body = await req.json();
-        const { label, imageUrl } = body;
-        if (!label) return new NextResponse("Label is required", { status: 400 });
-        if (!imageUrl) return new NextResponse("Image Url is required", { status: 400 });
+        const { label, imageUrl } = parseBody(billboardInputSchema, await req.json());
 
         if(!params.billboardId) return new NextResponse("Billboard id is required", { status: 400 });
 
@@ -49,28 +50,31 @@ export async function PATCH (
 
         const billboard = await prismadb.billboard.updateMany({
             where: {
-                id: params.billboardId
+                id: params.billboardId,
+                storeId: params.storeId
             },
             data: {
                 label,
                 imageUrl
             }
         });
-        if(!billboard) return new NextResponse("Billboard not found", { status: 404 });
+        if (billboard.count === 0) return new NextResponse("Billboard not found", { status: 404 });
         
         return NextResponse.json(billboard);
     } catch (error) {
+        if (error instanceof InputValidationError || error instanceof SyntaxError) return new NextResponse(error.message, { status: 400 });
         console.log("[BILLBOARD_PATCH]", error)
         return new NextResponse("Internal error", { status: 500 });
     }
 }
 
-export async function DELETE (
+export async function DELETE(
     req: Request,
-    { params }: { params: { storeId: string, billboardId: string } }
+    props: { params: Promise<{ storeId: string, billboardId: string }> }
 ) {
+    const params = await props.params;
     try {
-        const { userId } = auth();
+        const { userId } = await auth();
         if (!userId) return new NextResponse("Unauthenticated", { status: 401 });
         
         if(!params.billboardId) return new NextResponse("Billboard id is required", { status: 400 });
@@ -85,10 +89,11 @@ export async function DELETE (
 
         const billboard = await prismadb.billboard.deleteMany({
             where: {
-                id: params.billboardId
+                id: params.billboardId,
+                storeId: params.storeId
             }
         });
-        if(!billboard) return new NextResponse("Billboard not found", { status: 404 });
+        if (billboard.count === 0) return new NextResponse("Billboard not found", { status: 404 });
         
         return NextResponse.json(billboard);
     } catch (error) {

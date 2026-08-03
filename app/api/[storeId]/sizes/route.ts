@@ -1,20 +1,16 @@
-import { auth } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import prismadb from "@/lib/prismadb";
+import { InputValidationError, parseBody, sizeInputSchema } from "@/lib/api-security";
 
-export async function POST(
-    req: Request,
-    { params }: { params: { storeId: string } }
-) {
+export async function POST(req: Request, props: { params: Promise<{ storeId: string }> }) {
+    const params = await props.params;
     try {
-        const { userId } = auth();
+        const { userId } = await auth();
         if (!userId) return new NextResponse("Unauthenticated", { status: 401 });
 
-        const body = await req.json();
-        const { name, value } = body;
-        if (!name) return new NextResponse("Name is required", { status: 400 });
-        if (!value) return new NextResponse("Value is required", { status: 400 });
+        const { name, value } = parseBody(sizeInputSchema, await req.json());
         
         if (!params.storeId) return new NextResponse("Store Id is required", { status: 400 });
 
@@ -36,15 +32,14 @@ export async function POST(
         
         return NextResponse.json(size);
     } catch (error) {
+        if (error instanceof InputValidationError || error instanceof SyntaxError) return new NextResponse(error.message, { status: 400 });
         console.log("[SIZES_POST]", error)
         return new NextResponse("Internal error", { status: 500 });
     }
 }
 
-export async function GET(
-    req: Request,
-    { params }: { params: { storeId: string } }
-) {
+export async function GET(req: Request, props: { params: Promise<{ storeId: string }> }) {
+    const params = await props.params;
     try {
         if (!params.storeId) return new NextResponse("Store Id is required", { status: 400 });
 

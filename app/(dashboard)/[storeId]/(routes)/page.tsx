@@ -11,14 +11,13 @@ import { Overview } from "@/components/overview";
 import { getGraphRevenue } from "@/actions/get-graph-revenue";
 
 interface DashboardProps {
-    params: {
+    params: Promise<{
         storeId: string
-    }
+    }>
 }
 
-const Dashboard = async ({
-    params
-}: DashboardProps) => {
+const Dashboard = async (props: DashboardProps) => {
+    const params = await props.params;
     const totalRevenue = await getTotalRevenue(params.storeId);
     const salesCount = await getSalesCount(params.storeId)
     const stockCount = await getStockCount(params.storeId)

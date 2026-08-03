@@ -1,20 +1,17 @@
-import { auth } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import prismadb from "@/lib/prismadb";
+import { categoryInputSchema, InputValidationError, parseBody } from "@/lib/api-security";
+import { categoryRelationsBelongToStore } from "@/lib/store-relations";
 
-export async function POST(
-    req: Request,
-    { params }: { params: { storeId: string } }
-) {
+export async function POST(req: Request, props: { params: Promise<{ storeId: string }> }) {
+    const params = await props.params;
     try {
-        const { userId } = auth();
+        const { userId } = await auth();
         if (!userId) return new NextResponse("Unauthenticated", { status: 401 });
 
-        const body = await req.json();
-        const { name, billboardId } = body;
-        if (!name) return new NextResponse("Name is required", { status: 400 });
-        if (!billboardId) return new NextResponse("Billboard Id is required", { status: 400 });
+        const { name, billboardId } = parseBody(categoryInputSchema, await req.json());
         
         if (!params.storeId) return new NextResponse("Store Id is required", { status: 400 });
 
@@ -26,6 +23,10 @@ export async function POST(
         })
         if (!storeByUserId) return new NextResponse("Unauthorized", { status: 403 });
 
+        if (!(await categoryRelationsBelongToStore(params.storeId, billboardId))) {
+            return new NextResponse("Billboard does not belong to this store", { status: 400 });
+        }
+
         const category = await prismadb.category.create({
             data: {
                 name,
@@ -36,15 +37,14 @@ export async function POST(
         
         return NextResponse.json(category);
     } catch (error) {
+        if (error instanceof InputValidationError || error instanceof SyntaxError) return new NextResponse(error.message, { status: 400 });
         console.log("[CATEGORIES_POST]", error)
         return new NextResponse("Internal error", { status: 500 });
     }
 }
 
-export async function GET(
-    req: Request,
-    { params }: { params: { storeId: string } }
-) {
+export async function GET(req: Request, props: { params: Promise<{ storeId: string }> }) {
+    const params = await props.params;
     try {
         if (!params.storeId) return new NextResponse("Store Id is required", { status: 400 });
 
