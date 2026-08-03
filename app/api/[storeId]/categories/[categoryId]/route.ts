@@ -1,18 +1,22 @@
 import prismadb from "@/lib/prismadb";
 
-import { auth } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { categoryInputSchema, InputValidationError, parseBody } from "@/lib/api-security";
+import { categoryRelationsBelongToStore } from "@/lib/store-relations";
 
-export async function GET (
+export async function GET(
     req: Request,
-    { params }: { params: { categoryId: string } }
+    props: { params: Promise<{ categoryId: string, storeId: string }> }
 ) {
+    const params = await props.params;
     try {
         if(!params.categoryId) return new NextResponse("Category id is required", { status: 400 });
         
-        const category = await prismadb.category.findUnique({
+        const category = await prismadb.category.findFirst({
             where: {
-                id: params.categoryId
+                id: params.categoryId,
+                storeId: params.storeId
             },
             include: {
                 billboard: true
@@ -27,18 +31,16 @@ export async function GET (
     }
 }
 
-export async function PATCH (
+export async function PATCH(
     req: Request,
-    { params }: { params: { categoryId: string, storeId: string } }
+    props: { params: Promise<{ categoryId: string, storeId: string }> }
 ) {
+    const params = await props.params;
     try {
-        const { userId } = auth();
+        const { userId } = await auth();
         if (!userId) return new NextResponse("Unauthenticated", { status: 401 });
 
-        const body = await req.json();
-        const { name, billboardId } = body;
-        if (!name) return new NextResponse("Name is required", { status: 400 });
-        if (!billboardId) return new NextResponse("Billboard Id is required", { status: 400 });
+        const { name, billboardId } = parseBody(categoryInputSchema, await req.json());
 
         if(!params.categoryId) return new NextResponse("Category id is required", { status: 400 });
 
@@ -50,30 +52,37 @@ export async function PATCH (
         })
         if (!storeByUserId) return new NextResponse("Unauthorized", { status: 403 });
 
+        if (!(await categoryRelationsBelongToStore(params.storeId, billboardId))) {
+            return new NextResponse("Billboard does not belong to this store", { status: 400 });
+        }
+
         const category = await prismadb.category.updateMany({
             where: {
-                id: params.categoryId
+                id: params.categoryId,
+                storeId: params.storeId
             },
             data: {
                 name,
                 billboardId
             }
         });
-        if(!category) return new NextResponse("Category not found", { status: 404 });
+        if (category.count === 0) return new NextResponse("Category not found", { status: 404 });
         
         return NextResponse.json(category);
     } catch (error) {
+        if (error instanceof InputValidationError || error instanceof SyntaxError) return new NextResponse(error.message, { status: 400 });
         console.log("[CATEGORY_PATCH]", error)
         return new NextResponse("Internal error", { status: 500 });
     }
 }
 
-export async function DELETE (
+export async function DELETE(
     req: Request,
-    { params }: { params: { storeId: string, categoryId: string } }
+    props: { params: Promise<{ storeId: string, categoryId: string }> }
 ) {
+    const params = await props.params;
     try {
-        const { userId } = auth();
+        const { userId } = await auth();
         if (!userId) return new NextResponse("Unauthenticated", { status: 401 });
         
         if(!params.categoryId) return new NextResponse("Category id is required", { status: 400 });
@@ -88,10 +97,11 @@ export async function DELETE (
 
         const category = await prismadb.category.deleteMany({
             where: {
-                id: params.categoryId
+                id: params.categoryId,
+                storeId: params.storeId
             }
         });
-        if(!category) return new NextResponse("Category not found", { status: 404 });
+        if (category.count === 0) return new NextResponse("Category not found", { status: 404 });
         
         return NextResponse.json(category);
     } catch (error) {

@@ -1,18 +1,23 @@
 import prismadb from "@/lib/prismadb";
 
-import { auth } from "@clerk/nextjs";
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { InputValidationError, parseBody, productInputSchema } from "@/lib/api-security";
+import { productRelationsBelongToStore } from "@/lib/store-relations";
 
 export async function GET(
     req: Request,
-    { params }: { params: { productId: string } }
+    props: { params: Promise<{ productId: string, storeId: string }> }
 ) {
+    const params = await props.params;
     try {
         if (!params.productId) return new NextResponse("Product id is required", { status: 400 });
 
-        const product = await prismadb.product.findUnique({
+        const product = await prismadb.product.findFirst({
             where: {
-                id: params.productId
+                id: params.productId,
+                storeId: params.storeId,
+                isArchived: false
             },
             include: {
                 images: true,
@@ -32,13 +37,13 @@ export async function GET(
 
 export async function PATCH(
     req: Request,
-    { params }: { params: { productId: string, storeId: string } }
+    props: { params: Promise<{ productId: string, storeId: string }> }
 ) {
+    const params = await props.params;
     try {
-        const { userId } = auth();
+        const { userId } = await auth();
         if (!userId) return new NextResponse("Unauthenticated", { status: 401 });
 
-        const body = await req.json();
         const {
             name,
             price,
@@ -48,12 +53,7 @@ export async function PATCH(
             images,
             isFeatured,
             isArchived
-        } = body;
-        if (!name) return new NextResponse("Name is required", { status: 400 });
-        if (!price) return new NextResponse("Price is required", { status: 400 });
-        if (!categoryId) return new NextResponse("Category Id is required", { status: 400 });
-        if (!colorId) return new NextResponse("Color Id is required", { status: 400 });
-        if (!sizeId) return new NextResponse("Size Id is required", { status: 400 });
+        } = parseBody(productInputSchema, await req.json());
         if (!params.storeId) return new NextResponse("Store Id is required", { status: 400 });
 
         if (!params.productId) return new NextResponse("Product id is required", { status: 400 });
@@ -66,43 +66,47 @@ export async function PATCH(
         })
         if (!storeByUserId) return new NextResponse("Unauthorized", { status: 403 });
 
-        await prismadb.product.update({
+        if (!(await productRelationsBelongToStore(params.storeId, { categoryId, colorId, sizeId }))) {
+            return new NextResponse("Product relationships must belong to this store", { status: 400 });
+        }
+
+        const ownedProduct = await prismadb.product.findFirst({
             where: {
-                id: params.productId
+                id: params.productId,
+                storeId: params.storeId,
             },
-            data: {
-                name,
-                price,
-                categoryId,
-                colorId,
-                sizeId,
-                images: {
-                    deleteMany: {}
-                },
-                isFeatured,
-                isArchived
-            }
+            select: { id: true },
         });
+        if (!ownedProduct) return new NextResponse("Product not found", { status: 404 });
 
-        const product = await prismadb.product.update({
-            where: {
-                id: params.productId
-            },
-            data: {
-                images: {
-                    createMany: {
-                        data: [
-                            ...images.map((image: { url: string }) => image)
-                        ]
-                    }
-                }
-            }
-        })
+        const product = await prismadb.$transaction(async (transaction) => {
+            await transaction.product.update({
+                where: { id: ownedProduct.id },
+                data: {
+                    name,
+                    price,
+                    categoryId,
+                    colorId,
+                    sizeId,
+                    images: { deleteMany: {} },
+                    isFeatured,
+                    isArchived,
+                },
+            });
 
-        if (!product) return new NextResponse("Product not found", { status: 404 });
+            return transaction.product.update({
+                where: { id: ownedProduct.id },
+                data: {
+                    images: {
+                        createMany: { data: images },
+                    },
+                },
+            });
+        });
 
         return NextResponse.json(product);
     } catch (error) {
+        if (error instanceof InputValidationError || error instanceof SyntaxError) return new NextResponse(error.message, { status: 400 });
         console.log("[PRODUCT_PATCH]", error)
         return new NextResponse("Internal error", { status: 500 });
     }
@@ -110,10 +114,11 @@ export async function PATCH(
 
 export async function DELETE(
     req: Request,
-    { params }: { params: { storeId: string, productId: string } }
+    props: { params: Promise<{ storeId: string, productId: string }> }
 ) {
+    const params = await props.params;
     try {
-        const { userId } = auth();
+        const { userId } = await auth();
         if (!userId) return new NextResponse("Unauthenticated", { status: 401 });
 
         if (!params.productId) return new NextResponse("Product id is required", { status: 400 });
@@ -128,10 +133,11 @@ export async function DELETE(
 
         const product = await prismadb.product.deleteMany({
             where: {
-                id: params.productId
+                id: params.productId,
+                storeId: params.storeId
             }
         });
-        if (!product) return new NextResponse("Product not found", { status: 404 });
+        if (product.count === 0) return new NextResponse("Product not found", { status: 404 });
 
         return NextResponse.json(product);
     } catch (error) {

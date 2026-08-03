@@ -6,11 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings=0",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
     "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@clerk/nextjs": "^4.29.11",
+    "@clerk/nextjs": "^7.6.4",
     "@hookform/resolvers": "^3.3.4",
     "@prisma/client": "^5.12.1",
     "@radix-ui/react-checkbox": "^1.0.4",
@@ -22,14 +24,14 @@
     "@radix-ui/react-separator": "^1.0.3",
     "@radix-ui/react-slot": "^1.0.2",
     "@tanstack/react-table": "^8.15.3",
-    "axios": "^1.6.8",
+    "axios": "^1.19.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "cmdk": "^0.2.0",
     "date-fns": "^3.6.0",
     "lucide-react": "^0.365.0",
-    "next": "14.1.4",
-    "next-cloudinary": "^6.4.1",
+    "next": "^15.5.22",
+    "next-cloudinary": "^6.17.5",
     "next-themes": "^0.3.0",
     "prisma": "^5.12.1",
     "react": "^18",
@@ -44,14 +46,15 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^22.20.1",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.0.1",
     "eslint": "^8",
-    "eslint-config-next": "14.1.4",
-    "postcss": "^8",
+    "eslint-config-next": "^15.5.22",
+    "postcss": "^8.5.25",
     "tailwindcss": "^3.3.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

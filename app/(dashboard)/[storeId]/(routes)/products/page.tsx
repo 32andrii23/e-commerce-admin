@@ -5,11 +5,12 @@ import { ProductClient } from "./components/client";
 import { ProductColumn } from "./components/columns";
 import { formatter } from "@/lib/utils";
 
-const ProductsPage = async ({
-    params
-}: {
-    params: { storeId: string }
-}) => {
+const ProductsPage = async (
+    props: {
+        params: Promise<{ storeId: string }>
+    }
+) => {
+    const params = await props.params;
     const products = await prismadb.product.findMany({
         where: {
             storeId: params.storeId
